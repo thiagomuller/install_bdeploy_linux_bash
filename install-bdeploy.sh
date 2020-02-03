@@ -8,6 +8,7 @@ userDefinedHostname=''
 slaveIpAddress=''
 slavePassword=''
 slaveUser=''
+slaveName=''
 
 read_instalation_kind_from_user()
 {
@@ -32,7 +33,7 @@ create_necessary_directories()
 install_necessary_packages()
 {
         echo Installing necessary packages for bdeploy installation
-        yum install wget zip unzip net-tools vim -y
+        yum install wget zip unzip net-tools vim sshpass -y
         echo Installed necessary packages
 
 }
@@ -68,12 +69,10 @@ create_environment_variables()
 	then
 		export BDEPLOY_REMOTE=https://$(hostname):7701/api
 		echo export BDEPLOY_REMOTE=https://$(hostname):7701/api >> /etc/bashrc
-	else
-		if [ $nodeType == "slave" ]
-		then
-			export BDEPLOY_REMOTE=https://$(hostname):7702/api
-			echo export BDEPLOY_REMOTE=https://$(hostname):7702/api >> /etc/bashrc
-		fi
+	elif [ $nodeType == "slave" ]
+	then
+		export BDEPLOY_REMOTE=https://$(hostname):7702/api
+		echo export BDEPLOY_REMOTE=https://$(hostname):7702/api >> /etc/bashrc
 	fi
 	source /etc/bashrc
 }
@@ -206,13 +205,20 @@ get_slave_credentials()
 	read slaveUser
 	echo Please type the password for the username above
 	read slavePassword
+	echo Plase type the slave name you wish to register
+	read slaveName
 }
 
-#Yet to be tested
+get_slave_tokenFile()
+{
+	mkdir /BDEPLOY_SLAVE_TOKENFILE
+	sshpass -p "${slavePassword}" scp -q ${slaveUser}@${slaveIpAddress}:/BDEPLOY_TOKENFILE/token.txt /BDEPLOY_SLAVE_TOKENFILE
+}
+
 register_slave_in_master_node()
 {
-	mkdir /home/BDEPLOY_SLAVE_TOKENFILE
-	scp ${slaveUser}@${slaveIpAddress}:/BDEPLOY_TOKENFILE/token.txt /home/BDEPLOY_SLAVE_TOKENFILE
+	source /etc/bashrc
+	bdeploy slave --add=${slaveName} --root=$BDEPLOY_ROOT --remote=https://${slaveIpAddress}:7701/api --tokenFile=/BDEPLOY_SLAVE_TOKENFILE/token.txt
 }
 
 read_instalation_kind_from_user
@@ -246,8 +252,9 @@ case $installationKind in
 		;;
 	3)
 		echo ====================Make sure you have already runned this script and installed the slave node before trying to register it in the master node====================
-		echo Please type the ip address for the Slave you want to register
-		read slaveIpAddress
+		get_slave_credentials
+		get_slave_tokenFile
+		register_slave_in_master_node
 		;;
 	4)
 		remove_all_bdeploy_directories
