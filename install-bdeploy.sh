@@ -23,28 +23,27 @@ read_instalation_kind_from_user()
 
 create_necessary_directories()
 {
-        echo Creating necessary directories for bdeploy installation
-        mkdir /BDeploy
-        mkdir /BDEPLOY_TOKENFILE
-        touch /BDEPLOY_TOKENFILE/token.txt
-        echo Created necessary directories
+    echo Creating necessary directories for bdeploy installation
+    mkdir /BDeploy
+    mkdir /BDEPLOY_TOKENFILE
+    touch /BDEPLOY_TOKENFILE/token.txt
+    echo Created necessary directories
 }
 
 install_necessary_packages()
 {
-        echo Installing necessary packages for bdeploy installation
-        yum install wget zip unzip net-tools vim sshpass -y
-        echo Installed necessary packages
-
+    echo Installing necessary packages for bdeploy installation
+    yum install wget zip unzip net-tools vim sshpass -y
+    echo Installed necessary packages
 }
 
 
 download_bdeploy_from_web()
 {
-        echo Downloading bdeploy from the web
-        cd /BDeploy
-        wget https://github.com/bdeployteam/bdeploy/releases/download/v1.3.1/bdeploy-linux64-1.3.1.zip
-        bdeploy_zip_file=/BDeploy/bdeploy-linux64-1.3.1.zip
+    echo Downloading bdeploy from the web
+    cd /BDeploy
+    wget https://github.com/bdeployteam/bdeploy/releases/download/v1.3.1/bdeploy-linux64-1.3.1.zip
+    bdeploy_zip_file=/BDeploy/bdeploy-linux64-1.3.1.zip
 	while [ ! -f "$bdeploy_zip_file"  ]
 	do
 		sleep 10
@@ -57,24 +56,15 @@ download_bdeploy_from_web()
 create_environment_variables()
 {
 	nodeType=$1
-	cd /
 	export BDEPLOY_ROOT=/BDEPLOY_ROOT/
 	export BDEPLOY_TOKENFILE=/BDEPLOY_TOKENFILE/token.txt
 	export PATH=$PATH:/BDeploy/bdeploy-linux64-1.3.1/bin/
+	export BDEPLOY_REMOTE=https://$(hostname):7701/api
 	echo '#BDeploy System Variables' >> /etc/bashrc
 	echo export BDEPLOY_ROOT=/BDEPLOY_ROOT/ >> /etc/bashrc
+	echo export BDEPLOY_REMOTE=https://$(hostname):7701/api >> /etc/bashrc
 	echo export BDEPLOY_TOKENFILE=/BDEPLOY_TOKENFILE/token.txt >> /etc/bashrc
 	echo export PATH=$PATH:/BDeploy/bdeploy-linux64-1.3.1/bin/ >> /etc/bashrc
-	if [ $nodeType == "master" ]
-	then
-		export BDEPLOY_REMOTE=https://$(hostname):7701/api
-		echo export BDEPLOY_REMOTE=https://$(hostname):7701/api >> /etc/bashrc
-	elif [ $nodeType == "slave" ]
-	then
-		export BDEPLOY_REMOTE=https://$(hostname):7702/api
-		echo export BDEPLOY_REMOTE=https://$(hostname):7702/api >> /etc/bashrc
-	fi
-	source /etc/bashrc
 }
 
 delete_bdeploy_root_directory_if_exists()
@@ -114,7 +104,7 @@ verify_if_user_wants_to_set_hostname()
 	then
 		echo Please type the desired hostname
 		read userDefinedHostname
-		sed -i 's/$(hostname)/$hostname/' /etc/hostname
+		sed -i 's/${hostname}/$hostname/' /etc/hostname
 	fi
 }
 
@@ -123,6 +113,14 @@ remove_all_bdeploy_directories()
 	rm -R --force /BDEPLOY_ROOT
 	rm -R --force /BDEPLOY_TOKENFILE
 	rm -R --force /BDeploy/	
+}
+
+remove_bdeploy_slave_tokenfile_directory_if_exists()
+{
+	if [ -d "/BDEPLOY_SLAVE_TOKENFILE" ]
+	then
+		rm -R --force /BDEPLOY_SLAVE_TOKENFILE/
+	fi
 }
 
 remove_bdeploy_entries_from_bashrc()
@@ -245,6 +243,7 @@ case $installationKind in
 		create_environment_variables slave
 		init_bdeploy_node
 		get_username_and_password_from_user
+		create_username_and_password_for_bdeploy
 		open_bdeploy_ports_on_firewall
 		modify_bdeploy_service_file slave
 		copy_bdeploy_service_file_to_system
@@ -259,6 +258,7 @@ case $installationKind in
 	4)
 		remove_all_bdeploy_directories
 		remove_bdeploy_entries_from_bashrc
+		remove_bdeploy_slave_tokenfile_directory_if_exists
 		sudo reboot
 		;;
 	*)
