@@ -5,6 +5,9 @@ username=''
 password=''
 passHostname=-1
 userDefinedHostname=''
+slaveIpAddress=''
+slavePassword=''
+slaveUser=''
 
 read_instalation_kind_from_user()
 {
@@ -20,7 +23,6 @@ read_instalation_kind_from_user()
 create_necessary_directories()
 {
         echo Creating necessary directories for bdeploy installation
-        cd /
         mkdir /BDeploy
         mkdir /BDEPLOY_TOKENFILE
         touch /BDEPLOY_TOKENFILE/token.txt
@@ -53,16 +55,26 @@ download_bdeploy_from_web()
 
 create_environment_variables()
 {
+	nodeType=$1
 	cd /
 	export BDEPLOY_ROOT=/BDEPLOY_ROOT/
-	export BDEPLOY_REMOTE=https://$(hostname):7701/api
 	export BDEPLOY_TOKENFILE=/BDEPLOY_TOKENFILE/token.txt
 	export PATH=$PATH:/BDeploy/bdeploy-linux64-1.3.1/bin/
 	echo '#BDeploy System Variables' >> /etc/bashrc
 	echo export BDEPLOY_ROOT=/BDEPLOY_ROOT/ >> /etc/bashrc
-	echo export BDEPLOY_REMOTE=https://$(hostname):7701/api >> /etc/bashrc
 	echo export BDEPLOY_TOKENFILE=/BDEPLOY_TOKENFILE/token.txt >> /etc/bashrc
 	echo export PATH=$PATH:/BDeploy/bdeploy-linux64-1.3.1/bin/ >> /etc/bashrc
+	if [ $nodeType == "master" ]
+	then
+		export BDEPLOY_REMOTE=https://$(hostname):7701/api
+		echo export BDEPLOY_REMOTE=https://$(hostname):7701/api >> /etc/bashrc
+	else
+		if [ $nodeType == "slave" ]
+		then
+			export BDEPLOY_REMOTE=https://$(hostname):7702/api
+			echo export BDEPLOY_REMOTE=https://$(hostname):7702/api >> /etc/bashrc
+		fi
+	fi
 	source /etc/bashrc
 }
 
@@ -74,10 +86,9 @@ delete_bdeploy_root_directory_if_exists()
 	fi
 }
 
-init_bdeploy_master_node()
+init_bdeploy_node()
 {
 	delete_bdeploy_root_directory_if_exists
-	cd /
 	bdeploy init --root=$BDEPLOY_ROOT --hostname=$(hostname) --tokenFile=$BDEPLOY_TOKENFILE
 }
 
@@ -88,9 +99,9 @@ create_username_and_password_for_bdeploy()
 
 get_username_and_password_from_user()
 {
-	echo What will be the username set on this bdeploy installation?
+	echo ============================What will be the username set on this bdeploy installation============================?
 	read username
-	echo What will be the password set on this bdeploy installation?
+	echo ============================What will be the password set on this bdeploy installation============================?
 	read password
 }
 
@@ -169,8 +180,8 @@ modify_bdeploy_service_file()
 	if [ $nodeType == "slave" ]
 	then
 		sed -i 's/APPLICATION_USER/root/' /BDeploy/bdeploy-linux64-1.3.1/etc/bdeploy-minion.service
-	 	sed -i 's/\[Master|Slave\]/Slave' /BDeploy/bdeploy-linux64-1.3.1/etc/bdeploy-minion.service
-		sed -i 's/\[master|slave\]/slave' /BDeploy/bdeploy-linux64-1.3.1/etc/bdeploy-minion.service
+	 	sed -i 's/\[Master|Slave\]/Slave/' /BDeploy/bdeploy-linux64-1.3.1/etc/bdeploy-minion.service
+		sed -i 's/\[master|slave\]/slave/' /BDeploy/bdeploy-linux64-1.3.1/etc/bdeploy-minion.service
 	 	sed -i 's/opt\/bdeploy\/master\/bin\/bdeploy/BDeploy\/bdeploy-linux64-1.3.1\/bin\/bdeploy/' /BDeploy/bdeploy-linux64-1.3.1/etc/bdeploy-minion.service
 	 	sed -i 's/--root=\/opt\/bdeploy\/data/--root=\/BDEPLOY_ROOT/' /BDeploy/bdeploy-linux64-1.3.1/etc/bdeploy-minion.service
 	fi 	
@@ -187,26 +198,63 @@ enable_and_start_bdeploy_service()
 	sudo systemctl start bdeploy-minion.service
 }
 
-read_instalation_kind_from_user
-if [ $installationKind -eq 1 ]  
-then	
-	verify_if_user_wants_to_set_hostname
-	create_necessary_directories
-	install_necessary_packages
-	download_bdeploy_from_web
-	create_environment_variables
-	init_bdeploy_master_node
-	get_username_and_password_from_user
-	create_username_and_password_for_bdeploy
-	open_bdeploy_ports_on_firewall
-	modify_bdeploy_service_file master
-	copy_bdeploy_service_file_to_system
-	enable_and_start_bdeploy_service
-fi
+get_slave_credentials()
+{
+	echo Please type the IP address for the VM on which the slave is installed
+	read slaveIpAddress
+	echo Please type the username with full privileges for the VM on which the slave is installed
+	read slaveUser
+	echo Please type the password for the username above
+	read slavePassword
+}
 
-if [ $installationKind -eq 4 ]
-then
-	remove_all_bdeploy_directories
-	remove_bdeploy_entries_from_bashrc
-	sudo reboot
-fi	
+#Yet to be tested
+register_slave_in_master_node()
+{
+	mkdir /home/BDEPLOY_SLAVE_TOKENFILE
+	scp ${slaveUser}@${slaveIpAddress}:/BDEPLOY_TOKENFILE/token.txt /home/BDEPLOY_SLAVE_TOKENFILE
+}
+
+read_instalation_kind_from_user
+case $installationKind in
+	1)
+		verify_if_user_wants_to_set_hostname
+		create_necessary_directories
+		install_necessary_packages
+		download_bdeploy_from_web
+		create_environment_variables master
+		init_bdeploy_node
+		get_username_and_password_from_user
+		create_username_and_password_for_bdeploy
+		open_bdeploy_ports_on_firewall
+		modify_bdeploy_service_file master
+		copy_bdeploy_service_file_to_system
+		enable_and_start_bdeploy_service
+		;;
+	2)
+		verify_if_user_wants_to_set_hostname
+		create_necessary_directories
+		install_necessary_packages
+		download_bdeploy_from_web
+		create_environment_variables slave
+		init_bdeploy_node
+		get_username_and_password_from_user
+		open_bdeploy_ports_on_firewall
+		modify_bdeploy_service_file slave
+		copy_bdeploy_service_file_to_system
+		enable_and_start_bdeploy_service
+		;;
+	3)
+		echo ====================Make sure you have already runned this script and installed the slave node before trying to register it in the master node====================
+		echo Please type the ip address for the Slave you want to register
+		read slaveIpAddress
+		;;
+	4)
+		remove_all_bdeploy_directories
+		remove_bdeploy_entries_from_bashrc
+		sudo reboot
+		;;
+	*)
+		echo Opção inválida, por favor, digite novamente
+		;;
+	esac
